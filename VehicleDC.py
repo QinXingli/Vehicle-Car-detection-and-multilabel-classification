@@ -45,7 +45,7 @@ print('=> device: ', device)
 
 local_model_path = './checkpoints/epoch_39.pth'
 local_car_cfg_path = './car.cfg'
-local_car_det_weights_path = './car_detect.weights'
+local_car_det_weights_path = './car_540000.weights'
 
 
 
@@ -115,7 +115,7 @@ class Car_Classifier(object):
         self.net = Cls_Net(num_cls=num_cls, input_size=224).to(device)
         # self.net = torch.nn.DataParallel(Net(num_cls=20, input_size=224),
         #                                  device_ids=[0]).to(device)
-        self.net.load_state_dict(torch.load(model_path))
+        self.net.load_state_dict(torch.load(model_path, map_location='cpu'))
         print('=> vehicle classifier loaded from %s' % model_path)
 
         # set model to eval mode
@@ -260,13 +260,16 @@ class Car_DC():
             # rectangle points
             pt_1 = tuple(det[1:3].int())  # the left-up point
             pt_2 = tuple(det[3:5].int())  # the right down point
+
+            # for avoiding error when no car detected  -----by QinXL 2021-10-09
+            if pt_2[1] - pt_1[1] <= 0 or pt_2[0] - pt_1[0] <= 0:
+                continue
+
             pt_1s.append(pt_1)
             pt_2s.append(pt_2)
 
             # turn BGR back to RGB
-            ROI = Image.fromarray(
-                orig_img[pt_1[1]: pt_2[1],
-                         pt_1[0]: pt_2[0]][:, :, ::-1])
+            ROI = Image.fromarray(orig_img[pt_1[1]: pt_2[1], pt_1[0]: pt_2[0]][:, :, ::-1])
             # ROI.show()
 
             # call classifier to predict
@@ -278,6 +281,10 @@ class Car_DC():
         # 2
         color = (0, 215, 255)
         for i, det in enumerate(output):
+
+            if len(pt_1s) == 0 or len(pt_2s) == 0:
+                continue
+
             pt_1 = pt_1s[i]
             pt_2 = pt_2s[i]
 
@@ -314,7 +321,7 @@ class Car_DC():
                               num_cls,
                               nms=True,
                               nms_conf=nms_th,
-                              CUDA=True)  # post-process such as nms
+                              CUDA=False)  # post-process such as nms
 
         if type(output) != int:
             output[:, [1, 3]] -= (inp_dim - scaling_factor *
@@ -340,7 +347,7 @@ class Car_DC():
             img2det = img2det.to(device)  # put image data to device
 
             # vehicle detection
-            prediction = self.detector.forward(img2det, CUDA=True)
+            prediction = self.detector.forward(img2det, CUDA=False)
 
             # calculating scaling factor
             orig_img_size = list(img.size)
@@ -374,10 +381,10 @@ parser.add_argument('-dst-dir',
 
 if __name__ == '__main__':
     # ---------------------------- Car detect and classify
-    # DR_model = Car_DC(src_dir='./test_imgs',
-    #                   dst_dir='./test_result')
-    # DR_model.detect_classify()
-
-    args = parser.parse_args()
-    DR_model = Car_DC(src_dir=args.src_dir, dst_dir=args.dst_dir)
+    DR_model = Car_DC(src_dir='./my_test_imgs',
+                      dst_dir='./my_test_result')
     DR_model.detect_classify()
+
+    # args = parser.parse_args()
+    # DR_model = Car_DC(src_dir=args.src_dir, dst_dir=args.dst_dir)
+    # DR_model.detect_classify()
